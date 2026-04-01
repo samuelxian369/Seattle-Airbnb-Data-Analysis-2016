@@ -1,0 +1,89 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+import matplotlib.ticker as mtick
+
+# load and clean data
+df = pd.read_csv("calendar.csv")
+df['available'] = df['available'].map({'t': True, 'f': False})
+df['date'] = pd.to_datetime(df['date'], errors='coerce')
+df = df.dropna(subset=['available', 'date'])
+
+# January 2017 data was incomplete, excluded it
+df = df[~((df['date'].dt.year == 2017) & (df['date'].dt.month == 1))]
+
+df['month'] = df['date'].dt.to_period('M')
+df['day_of_week'] = df['date'].dt.day_name()
+
+# keeping a copy of all rows before dropping price nulls
+# unavailable nights usually have no price so dropping nulls would remove them
+df_all = df.copy()
+df['price'] = pd.to_numeric(df['price'].replace('[\$,]', '', regex=True), errors='coerce')
+df_price = df.dropna(subset=['price'])
+
+fmt = mtick.StrMethodFormatter('${x:,.0f}')
+
+# grouped summaries 
+monthly_avg = df_price.groupby('month')['price'].mean()
+
+avail_counts = (df_all.groupby(['month', 'available']).size()
+                .unstack(fill_value=0)
+                .rename(columns={True: 'Available', False: 'Unavailable'})
+                .reindex(columns=['Available', 'Unavailable'], fill_value=0))
+
+day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+avg_by_day = df_price.groupby('day_of_week')['price'].mean().reindex(day_order)
+
+# summary
+print("Seattle Airbnb Summary")
+print(f"  records analyzed:    {len(df_all):,}")
+print(f"  avg nightly price:   ${df_price['price'].mean():.2f}")
+print(f"  median price:        ${df_price['price'].median():.2f}")
+print(f"  highest price:       ${df_price['price'].max():.2f}")
+print(f"  lowest price:        ${df_price['price'].min():.2f}")
+print(f"  availability rate:   {df_all['available'].mean():.1%}")
+
+# plot function
+def show_plot(title, xlabel, ylabel):
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.tight_layout()
+    plt.show()
+
+# avg price per month
+ax = monthly_avg.plot(marker='o', figsize=(10, 6))
+ax.yaxis.set_major_formatter(fmt)
+plt.grid(True)
+show_plot("Average Airbnb Price per Month", "Month", "Price/Night (USD)")
+
+# price spread for available nights only
+plt.figure(figsize=(8, 6))
+ax = sns.boxplot(y='price', data=df_price[df_price['available']], color='steelblue')
+ax.yaxis.set_major_formatter(fmt)
+show_plot("Price Distribution for Available Nights", "", "Price/Night (USD)")
+
+# available vs unavailable nights each month
+x = np.arange(len(avail_counts))
+plt.figure(figsize=(12, 6))
+plt.bar(x - 0.175, avail_counts['Available'],   0.35, label='Available',   color='green')
+plt.bar(x + 0.175, avail_counts['Unavailable'], 0.35, label='Unavailable', color='red')
+plt.xticks(x, avail_counts.index.astype(str), rotation=45)
+plt.legend()
+plt.grid(axis='y')
+show_plot("Available vs Unavailable Nights per Month", "Month", "Nights")
+
+# avg price for day of the week
+plt.figure(figsize=(10, 6))
+ax = avg_by_day.plot(kind='bar', color='steelblue', edgecolor='black')
+ax.yaxis.set_major_formatter(fmt)
+plt.xticks(rotation=45)
+plt.grid(axis='y')
+show_plot("Average Airbnb Price by Day of Week", "Day", "Avg Price/Night (USD)")
+
+# export
+with pd.ExcelWriter("seattleAirbnbOutput.xlsx", engine='xlsxwriter') as writer:
+    monthly_avg.to_excel(writer, sheet_name='Monthly Avg Prices')
+    avail_counts.to_excel(writer, sheet_name='Availability Counts')
+    avg_by_day.to_excel(writer, sheet_name='Avg Price By Day')
