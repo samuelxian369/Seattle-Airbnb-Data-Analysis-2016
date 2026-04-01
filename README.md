@@ -26,5 +26,6 @@ Data Analysis of 1M+ Seattle Airbnb records in 2016 to find pricing trends and b
 # Notes
 - Unavailable nights had no listed price, so kept a copy dataframe when removing nulls.
 - Jan 2017 was excluded as data in the set was not complete.
+- Data report outputted in excel listing monthly average, availability count, and average by day.
 # Dataset
 https://www.kaggle.com/datasets/airbnb/seattle?select=calendar.csv 
